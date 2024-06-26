@@ -18,6 +18,11 @@ const thoughtSchema = new Schema(
     },
 
     username: {
+      type: String,
+      required: true,
+    },
+
+    userID: {
       type: Schema.Types.ObjectId,
       ref: 'user',
       required: true,

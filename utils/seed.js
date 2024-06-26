@@ -25,44 +25,64 @@ connection.once('open', async () => {
   const users = [];
   const thoughts = [];
 
-
-  
   for (let i = 0; i < 20; i++) {
     
     const userName = getRandomName();
-    const email = `${userName}${Math.floor(Math.random() * (99 - 18 + 1) + 18)} @ xample.com`;
+    const email = `${userName}${Math.floor(Math.random() * (99 - 18 + 1) + 18)}@example.com`;
     
     users.push({
       username:userName,
       email,
+      thoughts: [],
       friends:[],
     });
-
-    users.forEach(user => {
-      const friendCount = Math.floor(Math.random() * 5) + 1; 
-      const friends = [];
-  
-      for (let i = 0; i < friendCount; i++) {
-        let friend;
-        do {
-          friend = users[Math.floor(Math.random() * users.length)].username;
-        } while (friend === user.username || friends.includes(friend));
-  
-        friends.push(friend);
-      }
-  
-      user.friends = friends;
-    })
   }
 
   const userData = await User.collection.insertMany(users);
+  const insertedUsers = userData.ops || Object.values(userData.insertedIds);
 
-  const getRandomReactionArr = (int) => {
+  insertedUsers.forEach(user => {
+    const friendCount = Math.floor(Math.random() * 5) + 1; 
+    let friends = [];
+
+    for (let i = 0; i < friendCount; i++) {
+      
+      let friend;
+      let attempts = 0; 
+      do {
+        // Shuffle the users array to improve randomness
+        const shuffledUsers = users.sort(() => Math.random() - 0.5);
+        friend = shuffledUsers[Math.floor(Math.random() * shuffledUsers.length)]._id;
+        attempts++;
+        // Limit the number of attempts to prevent infinite loop
+      } while ((friend.equals(user._id) || friends.includes(friend)) && attempts < 10);
+
+      if (attempts < 10) {
+        friends.push(friend);
+      } else {
+        console.warn(`Could not find a suitable friend for user ${user._id}`);
+        break; // Exit loop if unable to find a suitable friend after 10 attempts
+      }
+    }
+
+    user.friends = friends;
+  })
+  
+  for (let user of insertedUsers) {
+    await User.updateOne({ _id: user._id }, { $set: { friends: user.friends } });
+  }
+
+  console.log('userData:', userData);
+
+  const getRandomReactionArr = (int, users) => {
     const results = [];
     for (let i = 0; i < int; i++) {
+      const randomUser = users[Math.floor(Math.random() * users.length)];
+      // console.log('randomUser:', randomUser);
       results.push({
         reactionBody: getRandomReaction(),
-        username: userData[Math.floor(Math.random() * userData.length)]._id,
+        username: randomUser.username,
+        userID: randomUser._id,
       });
     }
     return results;
@@ -70,13 +90,25 @@ connection.once('open', async () => {
 
   for (let i = 0; i < 20; i++) {
     const thoughtText = getRandomThought(10);
-    const reactions = [...getRandomReactionArr(10)];
+    let reactions = getRandomReactionArr(10, users);
+
+    const randomUser = users[Math.floor(Math.random() * users.length)];
     
-    thoughts.push({
+    const thought = new Thought({
       thoughtText,
-      username: userData[Math.floor(Math.random() * userData.length)]._id,
+      username: randomUser.username,
+      userID: randomUser._id,
       reactions: reactions,
     }); 
+    thoughts.push(thought);
+    console.log('Created thought:', thought);
+    
+    await thought.save();
+
+    await User.updateOne(
+      { _id: randomUser._id },
+      { $push: { thoughts: thought._id } }
+    );
   };
 
 
